@@ -94,7 +94,7 @@ class SRCNN2(nn.Module):
 
 class SRCNN3(nn.Module):
     def __init__(self, num_channels=1):
-        super(SRCNN3, self).__init__()
+        super(SRCNN3, self).__init__()#它是nn.Module的子集，特殊情形，所以用super传参数
         self.conv1 = nn.Conv2d(num_channels, 64, kernel_size=9, padding=9 // 2)
         self.upsample = nn.Upsample(scale_factor=2, mode='nearest')  # 添加上采样层，将输入图像尺寸增加为 256x256
         self.conv2 = nn.Conv2d(64, 32, kernel_size=5, padding=5 // 2)
@@ -109,4 +109,77 @@ class SRCNN3(nn.Module):
         x=self.upsample(x)  # 在第二次卷积之后进行上采样
         x = self.relu(self.conv3(x))
         x = self.conv4(x)
+        return x
+
+
+class SRCNN2_alter(nn.Module):
+    def __init__(self, num_channels=1):
+        super(SRCNN2_alter, self).__init__()
+        self.upsample1 = nn.Upsample(scale_factor=4, mode='nearest')  # 第一次上采样，放大4倍
+        self.conv1 = nn.Conv2d(num_channels, 64, kernel_size=9, padding=9 // 2)
+        self.conv2 = nn.Conv2d(64, 32, kernel_size=5, padding=5 // 2)
+        self.conv3 = nn.Conv2d(32, num_channels, kernel_size=5, padding=5 // 2)
+        self.upsample2 = nn.Upsample(scale_factor=2, mode='nearest')  # 第二次上采样，再放大两倍
+        self.relu = nn.ReLU(inplace=True)
+
+    def forward(self, x):
+        x = self.upsample1(x)  # 在卷积之前进行四倍上采样
+        x = self.relu(self.conv1(x))
+        #x = self.upsample2(x)  # 在第1个卷积之后进行两倍上采样
+        x = self.relu(self.conv2(x))
+        x = self.conv3(x)
+
+        return x
+
+
+
+
+class ResidualBlock(nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super(ResidualBlock, self).__init__()
+        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=3 // 2)
+        self.bn1 = nn.BatchNorm2d(out_channels)
+        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=3 // 2)
+        self.bn2 = nn.BatchNorm2d(out_channels)
+
+        self.shortcut = nn.Sequential()
+        if in_channels != out_channels:
+            self.shortcut = nn.Sequential(
+                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1, bias=False),
+                nn.BatchNorm2d(out_channels)
+            )
+
+    def forward(self, x):
+        out = torch.relu(self.bn1(self.conv1(x)))
+        out = self.bn2(self.conv2(out))
+        out += self.shortcut(x)
+        out = torch.relu(out)
+        return out
+
+
+class SRCNN_resnets(nn.Module):
+    def __init__(self, num_channels=1):
+        super(SRCNN_resnets, self).__init__()
+        self.upsample = nn.Upsample(scale_factor=4, mode='nearest')  # 添加上采样层，将输入图像尺寸增加为 256x256
+
+        self.conv1 = nn.Conv2d(num_channels, 64, kernel_size=9, padding=9 // 2)
+        self.conv2 = nn.Conv2d(64, 32, kernel_size=5, padding=5 // 2)
+
+        self.res_block1 = ResidualBlock(32, 32)
+        self.res_block2 = ResidualBlock(32, 32)
+        self.res_block3 = ResidualBlock(32, 32)
+
+        self.conv3 = nn.Conv2d(32, num_channels, kernel_size=5, padding=5 // 2)
+        self.relu = nn.ReLU(inplace=True)
+
+    def forward(self, x):
+        x = self.upsample(x)
+        x = self.relu(self.conv1(x))
+        x = self.relu(self.conv2(x))
+
+        x = self.res_block1(x)
+        x = self.res_block2(x)
+        x = self.res_block3(x)
+
+        x = self.conv3(x)
         return x
